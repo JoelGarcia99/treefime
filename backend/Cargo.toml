@@ -1,0 +1,15 @@
+[package]
+name = "treefime-api"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["migration"]
+
+[dependencies]
+axum = "0.8"
+serde = { version = "1", features = ["derive"] }
+sea-orm = { version = "1.1.19", default-features = false, features = ["sqlx-postgres", "runtime-tokio-rustls"] }
+sea-orm-migration = { version = "1.1.19", default-features = false, features = ["runtime-tokio-rustls", "sqlx-postgres"] }
+treefime-migration = { path = "migration" }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net"] }

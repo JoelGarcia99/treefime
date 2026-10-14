@@ -1,0 +1,17 @@
+[package]
+name = "treefime-migration"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "treefime_migration"
+path = "src/lib.rs"
+
+[[bin]]
+name = "treefime-migrate"
+path = "src/main.rs"
+
+[dependencies]
+async-trait = "0.1"
+sea-orm-migration = { version = "1.1.19", default-features = false, features = ["cli", "runtime-tokio-rustls", "sqlx-postgres"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
