@@ -1,4 +1,4 @@
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, utoipa::ToSchema)]
 pub struct HealthStatus {
     pub status: &'static str,
 }

@@ -1,12 +1,13 @@
 # Database schema
 
-PostgreSQL is the system of record. SeaORM migrations are in `backend/migration/` and are applied by the API when it starts.
+PostgreSQL is the system of record. SeaORM migrations are in `backend/migration/`. The dev API applies them at startup; production uses a one-shot migration service before the API starts.
 
 ## Entity relationship diagram
 
 ```mermaid
 erDiagram
     USERS ||--o{ SESSIONS : owns
+    SESSIONS ||--o{ REFRESH_TOKENS : rotates
 
     USERS {
         uuid id PK
@@ -14,6 +15,8 @@ erDiagram
         text password_hash
         varchar display_name
         timestamptz email_verified_at "nullable"
+        boolean is_root
+        boolean must_update_credentials
         timestamptz created_at
         timestamptz updated_at
         timestamptz disabled_at "nullable"
@@ -22,14 +25,27 @@ erDiagram
     SESSIONS {
         uuid id PK
         uuid user_id FK
-        bytea token_hash UK "SHA-256 digest, 32 bytes"
+        bytea token_hash UK "current refresh token digest"
+        bytea access_token_hash UK "access token digest"
+        bytea csrf_token_hash "CSRF digest"
         varchar device_name "nullable"
         text user_agent "nullable"
         inet ip_address "nullable"
         timestamptz created_at
         timestamptz last_seen_at
-        timestamptz expires_at
+        timestamptz access_expires_at
+        timestamptz expires_at "absolute session expiry"
         timestamptz revoked_at "nullable"
+    }
+
+    REFRESH_TOKENS {
+        uuid id PK
+        uuid session_id FK
+        bytea token_hash UK "SHA-256 digest, 32 bytes"
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz consumed_at "nullable"
+        uuid replaced_by_id FK "nullable"
     }
 ```
 
@@ -37,27 +53,32 @@ erDiagram
 
 ### `users`
 
-One account per normalized email address. The unique index on `LOWER(email)` prevents case variants from creating duplicate accounts. Normalize email consistently in the application when registering or looking up a user. `password_hash` is reserved for an adaptive password hash such as Argon2id; never store a plaintext password. The application should update `updated_at` when changing a user's data.
+One account per normalized email address. A unique index on `LOWER(email)` prevents case variants from creating duplicates. Normalize email consistently in application code. `password_hash` stores an Argon2id password hash, never plaintext. Update `updated_at` when a user's profile changes.
 
-`disabled_at` allows an account to be disabled without deleting its audit history. Authentication should reject disabled users and revoke their active sessions.
+`is_root` marks the first system account. `must_update_credentials` limits the seeded root account to login, logout, and updating its profile until it replaces its temporary email and password. `disabled_at` disables an account without deleting its history; authentication rejects disabled users.
 
 ### `sessions`
 
-Each successful login creates a row. Multiple rows per `user_id` are allowed, so a user can stay signed in on multiple devices and revoke each session independently. The browser receives a cryptographically random, high-entropy opaque token; only its SHA-256 digest is stored in `token_hash`. The raw token must not be logged or persisted in the database.
+One row represents a device login. Multiple rows per `user_id` are allowed, so a user can sign in on multiple devices and revoke each one independently. `access_token_hash` stores the digest of the active opaque access token. Access tokens expire after 15 minutes and are checked against Postgres on each authenticated request, so logout and revocation apply immediately.
 
-`expires_at` is the absolute expiry. `last_seen_at` supports an idle timeout if the application chooses one. Set `revoked_at` to invalidate one session; delete the user to cascade-delete all of their sessions. `device_name`, `user_agent`, and `ip_address` are informational and should not be treated as reliable device identity. Retain and expose them with appropriate privacy limits.
+`token_hash` stores the current refresh token digest. `expires_at` is the absolute 30-day session expiry. `last_seen_at` is updated on refresh. Set `revoked_at` to invalidate a device session; deleting a user cascades to all sessions. `device_name`, `user_agent`, and `ip_address` are informational, not reliable device identity. Retain and expose them with appropriate privacy limits.
 
-For browser authentication, use an opaque, cryptographically random session token in an `HttpOnly`, `Secure`, `SameSite=Lax` cookie and store only its SHA-256 digest here. Add CSRF protection for state-changing requests. The table deliberately allows many sessions for one user and supports revoking each device session independently.
+The session-bound CSRF token digest is stored in `csrf_token_hash`. Production browser cookies use `__Host-`, `Secure`, `HttpOnly` for auth tokens, and `SameSite=Lax`; state-changing requests must echo the CSRF token in `X-CSRF-Token`.
 
-For account passwords, use Argon2id with a unique salt and a cost that is benchmarked for the deployment environment. Keep authorization separate from authentication: add workspace or board membership records and check the authenticated user's role and access to the specific requested resource on every operation.
+### `refresh_tokens`
+
+Each row is one refresh token in a session family. A successful refresh consumes the presented token and inserts a replacement. The full hash history remains so presenting an already consumed token can be detected and the device session revoked. `replaced_by_id` records the rotation chain. Rotation does not extend the session's absolute expiry; retain history through the session expiry for replay detection.
+
+## Authentication and authorization
+
+The browser uses short-lived opaque access tokens plus rotating, single-use refresh tokens. This provides immediate server-side revocation and replay detection without storing bearer tokens in browser local storage. Password hashing uses Argon2id. For board features, add workspace or board membership records and check a user's role and access to the specific resource on every request; authentication alone must not grant access to every board.
 
 ## Migration operations
 
-Pending migrations are applied on API startup. For local CLI use, set `DATABASE_URL` and run from the repository root:
-
 ```sh
-cargo run --manifest-path backend/migration/Cargo.toml -- status
-cargo run --manifest-path backend/migration/Cargo.toml -- up
+make migrate
+make migrate-status
+make migrate-down
 ```
 
-The initial migration is `m202610130001_create_users_and_sessions`. Its `down` operation drops both tables and therefore deletes account and session data; use rollback commands only when that data loss is intended.
+Production migration commands are `make migrate-prod` and `make migrate-prod-status` with `POSTGRES_PASSWORD` set. The initial migration is `m202610130001_create_users_and_sessions`; `m202610130002_add_auth_token_rotation` adds bootstrap flags, token fields, CSRF binding, and refresh history. Rollbacks drop tables or auth state; only use them when the associated data loss is intended.

@@ -1,20 +1,57 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
 
-:root { color-scheme: light; --ink: #20222e; --muted: #858797; --line: #eeedf2; }
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --background: hsl(40 33% 98%);
+  --foreground: hsl(222 28% 14%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222 28% 14%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222 28% 14%);
+  --primary: hsl(159 55% 32%);
+  --primary-foreground: hsl(0 0% 100%);
+  --secondary: hsl(150 25% 93%);
+  --secondary-foreground: hsl(158 45% 24%);
+  --muted: hsl(150 14% 94%);
+  --muted-foreground: hsl(220 10% 45%);
+  --accent: hsl(150 25% 93%);
+  --accent-foreground: hsl(158 45% 24%);
+  --destructive: hsl(0 72% 51%);
+  --border: hsl(220 15% 87%);
+  --input: hsl(220 15% 87%);
+  --ring: hsl(159 55% 32%);
+  --radius: 0.75rem;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
 * { box-sizing: border-box; }
-body { margin: 0; background: #faf9fc; color: var(--ink); font-family: 'DM Sans', sans-serif; }
-.welcome { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 76px 24px 34px; text-align: center; }
-.mark { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 15px; background: #6653d8; color: white; font: 800 23px 'Manrope', sans-serif; box-shadow: 0 7px 18px #6653d833; }
-.eyebrow { margin: 31px 0 11px; color: #6857ca; font-size: 12px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
-h1 { margin: 0; font: 800 clamp(42px, 6vw, 66px)/1.08 'Manrope', sans-serif; letter-spacing: -.055em; }
-.description { max-width: 470px; margin: 18px 0 38px; color: #757687; font-size: 16px; line-height: 1.7; }
-.preview { display: grid; grid-template-columns: repeat(3, minmax(190px, 1fr)); gap: 14px; width: min(820px, 100%); padding: 17px; border: 1px solid #eeedf2; border-radius: 17px; background: #f3f2f7; text-align: left; box-shadow: 0 18px 50px #29243b0a; }
-.column { min-height: 210px; padding: 13px; border: 1px solid #eeedf2; border-radius: 12px; background: #fafafd; }
-.column-title { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 12px; font-weight: 700; }
-.dot { width: 8px; height: 8px; border-radius: 50%; }.violet { background: #8977e6; }.amber { background: #e8ab4d; }.mint { background: #59b99d; }
-.count { margin-left: auto; color: #a0a0ac; font-size: 11px; font-weight: 500; }
-.card { display: flex; flex-direction: column; gap: 8px; margin-bottom: 9px; padding: 12px; border: 1px solid #f0eff4; border-radius: 9px; background: white; box-shadow: 0 2px 5px #24213708; }
-.card strong { font-size: 11px; line-height: 1.5; font-weight: 600; }.card small { color: #9a9aa6; font-size: 10px; }
-.tag { align-self: flex-start; padding: 4px 7px; border-radius: 5px; font-size: 9px; font-weight: 700; }.lilac { color: #6857ca; background: #f0edff; }.blue { color: #4777b5; background: #eaf2ff; }.green { color: #44876c; background: #e7f6ed; }.rose { color: #ba6673; background: #ffedf0; }
-.footer-note { margin: auto 0 0; padding-top: 35px; color: #a1a0ac; font-size: 12px; }
-@media (max-width: 680px) { .welcome { padding-top: 54px; }.preview { grid-template-columns: 1fr; max-width: 350px; }.column { min-height: auto; } }
+body { margin: 0; min-height: 100vh; background: var(--background); color: var(--foreground); font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif; }
+button, input { font: inherit; }
+::selection { background: hsl(152 50% 84%); color: hsl(158 45% 20%); }
