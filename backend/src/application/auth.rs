@@ -125,6 +125,14 @@ impl AuthState {
             ))
             .await
             .map_err(ApiError::database)?;
+        transaction
+            .execute(Statement::from_sql_and_values(
+                DatabaseBackend::Postgres,
+                "INSERT INTO user_system_roles (user_id, role_id) SELECT id, (SELECT id FROM system_roles WHERE key = 'platform_workspace_manager') FROM users WHERE LOWER(email) = LOWER($1) ON CONFLICT DO NOTHING",
+                [bootstrap_email.clone().into()],
+            ))
+            .await
+            .map_err(ApiError::database)?;
         transaction.commit().await.map_err(ApiError::database)?;
 
         println!(
@@ -531,7 +539,7 @@ fn user_from_row(row: &sea_orm::QueryResult) -> Result<AuthenticatedUser, ApiErr
     })
 }
 
-fn normalize_email(email: &str) -> Result<String, ApiError> {
+pub(crate) fn normalize_email(email: &str) -> Result<String, ApiError> {
     let normalized = email.trim().to_lowercase();
     let mut parts = normalized.split('@');
     let valid = normalized.len() <= 320
@@ -548,7 +556,7 @@ fn normalize_email(email: &str) -> Result<String, ApiError> {
     Ok(normalized)
 }
 
-async fn hash_password(password: String) -> Result<String, ApiError> {
+pub(crate) async fn hash_password(password: String) -> Result<String, ApiError> {
     if password.len() < 12 || password.len() > 128 {
         return Err(ApiError::bad_request(
             "Password must be between 12 and 128 bytes.",
@@ -565,7 +573,10 @@ async fn hash_password(password: String) -> Result<String, ApiError> {
     .map_err(|_| ApiError::internal())?
 }
 
-async fn verify_password(encoded_hash: String, password: String) -> Result<(), ApiError> {
+pub(crate) async fn verify_password(
+    encoded_hash: String,
+    password: String,
+) -> Result<(), ApiError> {
     tokio::task::spawn_blocking(move || {
         let parsed_hash = PasswordHash::new(&encoded_hash).map_err(|_| ApiError::internal())?;
         Argon2::default()
@@ -576,7 +587,7 @@ async fn verify_password(encoded_hash: String, password: String) -> Result<(), A
     .map_err(|_| ApiError::internal())?
 }
 
-fn generate_token() -> Result<String, ApiError> {
+pub(crate) fn generate_token() -> Result<String, ApiError> {
     let mut bytes = [0_u8; 32];
     OsRng
         .try_fill_bytes(&mut bytes)
@@ -584,6 +595,6 @@ fn generate_token() -> Result<String, ApiError> {
     Ok(URL_SAFE_NO_PAD.encode(bytes))
 }
 
-fn token_hash(token: &str) -> Vec<u8> {
+pub(crate) fn token_hash(token: &str) -> Vec<u8> {
     Sha256::digest(token.as_bytes()).to_vec()
 }

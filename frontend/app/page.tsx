@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import Link from "next/link";
 
 type User = {
   id: string;
@@ -228,6 +229,7 @@ export default function Home() {
               <CardContent className="space-y-5 px-0">
                 <div className="rounded-xl border border-border/70 bg-white/70 p-4"><p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Signed in as</p><p className="mt-1 font-medium">{user?.email}</p>{user?.is_root && <span className="mt-3 inline-flex rounded-full bg-secondary px-2.5 py-1 text-xs font-semibold text-secondary-foreground">System root</span>}</div>
                 <div className="flex items-center gap-3 rounded-xl bg-white/50 p-4 text-sm text-muted-foreground"><div className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-primary"><Layers3 size={17} /></div><span>Your boards and projects will appear here as you create them.</span></div>
+                {user?.is_root && <Link href="/admin" className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90">Open admin panel <ArrowRight size={16} /></Link>}
                 <Button variant="outline" className="w-full" onClick={signOut} disabled={busy}><LogOut size={16} /> Sign out</Button>
               </CardContent>
             </Card>

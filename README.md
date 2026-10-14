@@ -46,7 +46,13 @@ The current auth routes are:
 - `GET /api/v1/auth/me`
 - `PATCH /api/v1/auth/profile`
 
-There is no public registration route yet. The bootstrap root account is restricted to login, logout, and replacing its temporary email and password until that profile update succeeds.
+There is no open public registration route. New accounts can be created by accepting a valid workspace invitation. The bootstrap root account is restricted to login, logout, and replacing its temporary email and password until that profile update succeeds.
+
+## Workspace administration
+
+The platform root can open `/admin` to create a workspace, invite its initial owner, inspect workspace metadata and membership, and issue additional invitations. The root remains outside every workspace and cannot access workspace content. Invitation links are single-use, expire after seven days, and are displayed only when created; copy and deliver the link to the invited person. Existing accounts must enter their current password to accept, while new users set a password during acceptance.
+
+System and workspace permissions are separate. System role bundles grant keys such as `workspaces:create`, `workspaces:read_metadata`, and `workspace_invitations:manage`; workspace role bundles grant membership-scoped keys. Owners and admins manage metadata and membership. Members receive workspace content access, which will be enforced by content routes as those features are added.
 
 ## Backend structure and migrations
 

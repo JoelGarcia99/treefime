@@ -2,6 +2,7 @@ pub use sea_orm_migration::prelude::*;
 
 mod m202610130001_create_users_and_sessions;
 mod m202610130002_add_auth_token_rotation;
+mod m202610140001_workspaces_rbac_invitations;
 
 pub struct Migrator;
 
@@ -11,6 +12,7 @@ impl MigratorTrait for Migrator {
         vec![
             Box::new(m202610130001_create_users_and_sessions::Migration),
             Box::new(m202610130002_add_auth_token_rotation::Migration),
+            Box::new(m202610140001_workspaces_rbac_invitations::Migration),
         ]
     }
 }

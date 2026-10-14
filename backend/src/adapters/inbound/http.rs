@@ -1,6 +1,6 @@
 use axum::{
     Extension, Json, Router,
-    extract::{Request, State},
+    extract::{Path, Request, State},
     http::{HeaderMap, HeaderValue, Method, StatusCode, header},
     middleware::{self, Next},
     response::{IntoResponse, Response},
@@ -19,6 +19,10 @@ use crate::{
         },
         error::AppError,
         health::GetHealth,
+        workspaces::{
+            self, AcceptInvitationRequest, CreateInvitationRequest, CreateWorkspaceRequest,
+            UpdateWorkspaceRequest,
+        },
     },
     domain::health::HealthStatus,
     ports::inbound::HealthUseCase,
@@ -32,6 +36,8 @@ const PROFILE_PATH: &str = "/api/v1/auth/profile";
 const CSRF_PATH: &str = "/api/v1/auth/csrf";
 const DOCS_PATH: &str = "/api/v1/docs";
 const OPENAPI_PATH: &str = "/api/v1/openapi.json";
+const WORKSPACES_PATH: &str = "/api/v1/workspaces";
+const INVITATIONS_PATH: &str = "/api/v1/invitations/{token}/accept";
 const DEV_ACCESS_COOKIE: &str = "treefime_access";
 const DEV_REFRESH_COOKIE: &str = "treefime_refresh";
 const PROD_ACCESS_COOKIE: &str = "__Host-treefime_access";
@@ -41,9 +47,9 @@ const PROD_CSRF_COOKIE: &str = "__Host-treefime_csrf";
 
 #[derive(OpenApi)]
 #[openapi(
-    paths(health, csrf, login, refresh, logout, current_user, update_profile),
-    components(schemas(HealthStatus, LoginRequest, ProfileUpdateRequest, AuthResponse, UserResponse, CsrfResponse, ErrorBody)),
-    tags((name = "auth", description = "Authentication and profile management"))
+    paths(health, csrf, login, refresh, logout, current_user, update_profile, list_workspaces, create_workspace, update_workspace, list_workspace_members, create_workspace_invitation, revoke_workspace_invitation, remove_workspace_member, accept_workspace_invitation),
+    components(schemas(HealthStatus, LoginRequest, ProfileUpdateRequest, AuthResponse, UserResponse, CsrfResponse, ErrorBody, workspaces::CreateWorkspaceRequest, workspaces::UpdateWorkspaceRequest, workspaces::CreateInvitationRequest, workspaces::AcceptInvitationRequest, workspaces::WorkspaceSummary, workspaces::CreatedWorkspace, workspaces::CreatedInvitation, workspaces::WorkspaceMember, workspaces::InvitationAccepted)),
+    tags((name = "auth", description = "Authentication and profile management"), (name = "workspaces", description = "Workspace administration and membership"))
 )]
 struct ApiDoc;
 
@@ -56,6 +62,25 @@ pub fn router(state: AuthState) -> Router {
         .route(LOGOUT_PATH, post(logout))
         .route("/api/v1/auth/me", get(current_user))
         .route(PROFILE_PATH, patch(update_profile))
+        .route(WORKSPACES_PATH, get(list_workspaces).post(create_workspace))
+        .route("/api/v1/workspaces/{workspace_id}", patch(update_workspace))
+        .route(
+            "/api/v1/workspaces/{workspace_id}/members",
+            get(list_workspace_members),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/members/{user_id}",
+            axum::routing::delete(remove_workspace_member),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/invitations",
+            post(create_workspace_invitation),
+        )
+        .route(
+            "/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}",
+            axum::routing::delete(revoke_workspace_invitation),
+        )
+        .route(INVITATIONS_PATH, post(accept_workspace_invitation))
         .route(OPENAPI_PATH, get(openapi_json))
         .merge(Scalar::with_url(DOCS_PATH, ApiDoc::openapi()))
         .layer(middleware::from_fn_with_state(
@@ -177,6 +202,95 @@ async fn update_profile(
     Ok(Json(state.update_profile(&user, payload).await?))
 }
 
+#[utoipa::path(get, path = "/api/v1/workspaces", responses((status = 200, body = [workspaces::WorkspaceSummary]), (status = 403, description = "Workspace metadata permission required")), tag = "workspaces")]
+async fn list_workspaces(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<workspaces::WorkspaceSummary>>, AppError> {
+    Ok(Json(
+        workspaces::list_workspaces(&state.database, &user).await?,
+    ))
+}
+
+#[utoipa::path(post, path = "/api/v1/workspaces", request_body = CreateWorkspaceRequest, responses((status = 201, body = workspaces::CreatedWorkspace), (status = 403, description = "Workspace creation permission required")), tag = "workspaces")]
+async fn create_workspace(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<CreateWorkspaceRequest>,
+) -> Result<(StatusCode, Json<workspaces::CreatedWorkspace>), AppError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(workspaces::create_workspace(&state.database, &user, payload).await?),
+    ))
+}
+
+#[utoipa::path(patch, path = "/api/v1/workspaces/{workspace_id}", params(("workspace_id" = Uuid, Path)), request_body = UpdateWorkspaceRequest, responses((status = 200, body = workspaces::WorkspaceSummary), (status = 403)), tag = "workspaces")]
+async fn update_workspace(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Json(payload): Json<UpdateWorkspaceRequest>,
+) -> Result<Json<workspaces::WorkspaceSummary>, AppError> {
+    Ok(Json(
+        workspaces::update_workspace(&state.database, &user, workspace_id, payload).await?,
+    ))
+}
+
+#[utoipa::path(get, path = "/api/v1/workspaces/{workspace_id}/members", params(("workspace_id" = Uuid, Path)), responses((status = 200, body = [workspaces::WorkspaceMember]), (status = 403)), tag = "workspaces")]
+async fn list_workspace_members(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(workspace_id): Path<uuid::Uuid>,
+) -> Result<Json<Vec<workspaces::WorkspaceMember>>, AppError> {
+    Ok(Json(
+        workspaces::list_members(&state.database, &user, workspace_id).await?,
+    ))
+}
+
+#[utoipa::path(post, path = "/api/v1/workspaces/{workspace_id}/invitations", params(("workspace_id" = Uuid, Path)), request_body = CreateInvitationRequest, responses((status = 201, body = workspaces::CreatedInvitation), (status = 403)), tag = "workspaces")]
+async fn create_workspace_invitation(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path(workspace_id): Path<uuid::Uuid>,
+    Json(payload): Json<CreateInvitationRequest>,
+) -> Result<(StatusCode, Json<workspaces::CreatedInvitation>), AppError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(workspaces::invite_member(&state.database, &user, workspace_id, payload).await?),
+    ))
+}
+
+#[utoipa::path(delete, path = "/api/v1/workspaces/{workspace_id}/invitations/{invitation_id}", params(("workspace_id" = Uuid, Path), ("invitation_id" = Uuid, Path)), responses((status = 204), (status = 403)), tag = "workspaces")]
+async fn revoke_workspace_invitation(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((workspace_id, invitation_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> Result<StatusCode, AppError> {
+    workspaces::revoke_invitation(&state.database, &user, workspace_id, invitation_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(delete, path = "/api/v1/workspaces/{workspace_id}/members/{user_id}", params(("workspace_id" = Uuid, Path), ("user_id" = Uuid, Path)), responses((status = 204), (status = 403), (status = 409)), tag = "workspaces")]
+async fn remove_workspace_member(
+    State(state): State<AuthState>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Path((workspace_id, user_id)): Path<(uuid::Uuid, uuid::Uuid)>,
+) -> Result<StatusCode, AppError> {
+    workspaces::remove_member(&state.database, &user, workspace_id, user_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(post, path = "/api/v1/invitations/{token}/accept", params(("token" = String, Path)), request_body = AcceptInvitationRequest, responses((status = 200, body = workspaces::InvitationAccepted), (status = 401, description = "Invitation invalid, expired, or account password incorrect")), tag = "workspaces")]
+async fn accept_workspace_invitation(
+    State(state): State<AuthState>,
+    Path(token): Path<String>,
+    Json(payload): Json<AcceptInvitationRequest>,
+) -> Result<Json<workspaces::InvitationAccepted>, AppError> {
+    Ok(Json(
+        workspaces::accept_invitation(&state.database, &token, payload).await?,
+    ))
+}
+
 async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
 }
@@ -247,6 +361,9 @@ fn is_public(path: &str, method: &Method) -> bool {
         || path == CSRF_PATH
         || path == DOCS_PATH
         || path == OPENAPI_PATH
+        || (method == Method::POST
+            && path.starts_with("/api/v1/invitations/")
+            && path.ends_with("/accept"))
         || (method == Method::POST && matches!(path, LOGIN_PATH | REFRESH_PATH | LOGOUT_PATH))
 }
 
